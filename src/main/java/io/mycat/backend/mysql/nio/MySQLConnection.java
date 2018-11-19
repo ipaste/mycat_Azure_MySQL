@@ -252,6 +252,22 @@ public class MySQLConnection extends BackendAIOConnection {
 		packet.write(this);
 	}
 
+	public void authenticate0(byte[] seed) {
+		byte[] pass = password.getBytes();
+		byte[] password0 = new byte[20];
+		try {
+			password0 = SecurityUtil.scramble411(pass, seed);
+		} catch (NoSuchAlgorithmException e) {
+			e.printStackTrace();
+		}
+		byte[] authhead = new byte[]{(byte) 0x14,(byte)0x00,(byte)0x00,(byte)0x03};
+		byte[] auth = new byte[24];
+		System.arraycopy(authhead,0,auth,0,4);
+		System.arraycopy(password0,0,auth,4,20);
+//		System.out.println("auth=========="+MySQLConnectionAuthenticator.byteArrayToHexStr(auth));
+		this.write(auth);
+	}
+
 	public boolean isAutocommit() {
 		return autocommit;
 	}
