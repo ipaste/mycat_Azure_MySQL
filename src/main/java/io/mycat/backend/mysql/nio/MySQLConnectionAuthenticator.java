@@ -97,7 +97,6 @@ public class MySQLConnectionAuthenticator implements NIOHandler {
 				throw new ConnectionException(err.errno, errMsg);
 
 			case EOFPacket.FIELD_COUNT:
-				byte[] method = new byte[21];
 				/**
 				 * kaix@microsoft.com
 				 * https://dev.mysql.com/doc/internals/en/authentication-method-change.html
@@ -119,18 +118,30 @@ public class MySQLConnectionAuthenticator implements NIOHandler {
 				 *
 				 * method_name_length to get the length of auth method string defined in the package
 				 */
-				//
-				int method_name_length = Arrays.binarySearch(data,5,data.length,(byte)0x00)-5;
-				System.arraycopy(data,5,method,0,method_name_length);
-				String auth_method = new String(method, StandardCharsets.UTF_8);
-				if("mysql_native_password".equals(auth_method)) {
-					LOGGER.debug("processing MySQL Auth switch request.");
-					byte[] seed = new byte[20];
-					System.arraycopy(data,5+method_name_length+1,seed,0,20);
-					source.authenticate0(seed);
+				if(data.length<5) {
+					throw new RuntimeException("Unknown Packet!");
+				} else if (Arrays.binarySearch(data,5,data.length,(byte)0x00)>5){
+					int method_name_length = Arrays.binarySearch(data,5,data.length,(byte)0x00)>5?
+							Arrays.binarySearch(data,5,data.length,(byte)0x00)-5:5;
+					byte[] method = new byte[21];
+					System.arraycopy(data,5,method,0,method_name_length);
+					String auth_method = new String(method, StandardCharsets.UTF_8);
+					if("mysql_native_password".equals(auth_method)) {
+						LOGGER.debug("processing MySQL Auth switch request.");
+						byte[] seed = new byte[20];
+						if(data.length>=5+method_name_length+1+20) {
+							System.arraycopy(data, 5 + method_name_length + 1, seed, 0, 20);
+							source.authenticate0(seed);
+						} else {
+							throw new RuntimeException("Auth data is not match. length is not 20");
+						}
+					} else {
+						throw new RuntimeException("Not supported auth method!");
+					}
 				} else {
 					auth323(data[3]);
 				}
+
 				break;
 			default:
 				packet = source.getHandshake();
