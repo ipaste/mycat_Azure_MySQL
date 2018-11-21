@@ -118,29 +118,51 @@ public class MySQLConnectionAuthenticator implements NIOHandler {
 				 *
 				 * method_name_length to get the length of auth method string defined in the package
 				 */
-				if(data.length<5) {
-					throw new RuntimeException("Unknown Packet!");
-				} else if (Arrays.binarySearch(data,5,data.length,(byte)0x00)>5){
-					int method_name_length = Arrays.binarySearch(data,5,data.length,(byte)0x00)>5?
-							Arrays.binarySearch(data,5,data.length,(byte)0x00)-5:5;
-					byte[] method = new byte[21];
-					System.arraycopy(data,5,method,0,method_name_length);
+				if(data.length<5)
+				throw new RuntimeException("Unknown Packet!");
+				final int AUTH_SWITCH_REQUEST_HEAD_LEN = 5;
+				final int NATIVE_PASSWORD_CHALLENGE_LEN = 20;
+				byte NUL = (byte)0x00;
+				if (Arrays.binarySearch(data,AUTH_SWITCH_REQUEST_HEAD_LEN,
+						data.length,NUL)>AUTH_SWITCH_REQUEST_HEAD_LEN){
+
+					if (!(Arrays.binarySearch(data,AUTH_SWITCH_REQUEST_HEAD_LEN,data.length,NUL)
+							>AUTH_SWITCH_REQUEST_HEAD_LEN))
+						throw new RuntimeException("unknown package!!!");
+
+					int method_name_length =
+							Arrays.binarySearch(data,AUTH_SWITCH_REQUEST_HEAD_LEN,data.length,NUL)
+									-AUTH_SWITCH_REQUEST_HEAD_LEN;
+					byte[] method = new byte[method_name_length];
+					System.arraycopy(data,AUTH_SWITCH_REQUEST_HEAD_LEN,method,0,method_name_length);
 					String auth_method = new String(method, StandardCharsets.UTF_8);
 					if("mysql_native_password".equals(auth_method)) {
 						LOGGER.debug("processing MySQL Auth switch request.");
-						byte[] seed = new byte[20];
-						if(data.length>=5+method_name_length+1+20) {
-							System.arraycopy(data, 5 + method_name_length + 1, seed, 0, 20);
-							source.authenticate0(seed);
+						byte[] challenge = new byte[NATIVE_PASSWORD_CHALLENGE_LEN];
+						if(data.length>=AUTH_SWITCH_REQUEST_HEAD_LEN+method_name_length+1+NATIVE_PASSWORD_CHALLENGE_LEN) {
+							System.arraycopy(data, AUTH_SWITCH_REQUEST_HEAD_LEN + method_name_length + 1,
+									challenge, 0, NATIVE_PASSWORD_CHALLENGE_LEN);
+							source.authenticate0(challenge);
 						} else {
 							throw new RuntimeException("Auth data is not match. length is not 20");
 						}
 					} else {
+						//should support old_password here, Azure MySQL doesn't support old password
 						throw new RuntimeException("Not supported auth method!");
 					}
+
 				} else {
+					/**
+					 * MySQL is an open-source database system available for Microsoft Windows, Linux, and other UNIX-based operating systems.
+					 * There is a vulnerability in the check_scramble_323() function that could allow an attacker
+					 * to bypass authentication by supplying a "passwd_len" value of NULL.
+					 * It has been reported that versions 4.1 prior to 4.1.3 and version 5.0 are affected.
+					 * https://tools.cisco.com/security/center/viewAlert.x?alertId=17598
+					 */
 					auth323(data[3]);
 				}
+
+
 
 				break;
 			default:
